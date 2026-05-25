@@ -1,0 +1,257 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model - Authentication and user management
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  password      String
+  name          String
+  role          Role      @default(EMPLOYEE)
+  isActive      Boolean   @default(true)
+  emailVerified Boolean   @default(false)
+  verificationToken String?
+  resetToken    String?
+  resetTokenExpires DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  business      Business? @relation(fields: [businessId], references: [id])
+  businessId    String?
+  
+  sales         Sale[]
+  inventoryMovements InventoryMovement[]
+  
+  @@index([email])
+  @@index([businessId])
+}
+
+enum Role {
+  ADMIN
+  EMPLOYEE
+}
+
+// Business model - Company information
+model Business {
+  id          String   @id @default(uuid())
+  name        String
+  ownerName   String
+  location    String
+  address     String
+  phone       String
+  rnc         String?
+  businessType BusinessType
+  schedule    String
+  logo        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  users       User[]
+  products    Product[]
+  sales       Sale[]
+  categories  Category[]
+  subscription Subscription?
+  
+  @@index([businessType])
+}
+
+enum BusinessType {
+  COLMADO
+  MINIMARKET
+  TIENDA
+  CAFETERIA
+  SURTIDORA
+  CAR_WASH
+  OTRO
+}
+
+// Subscription model - SaaS subscription management
+model Subscription {
+  id              String           @id @default(uuid())
+  businessId      String           @unique
+  business        Business         @relation(fields: [businessId], references: [id])
+  plan            SubscriptionPlan
+  status          SubscriptionStatus
+  startDate       DateTime         @default(now())
+  endDate         DateTime
+  trialEndDate    DateTime?
+  paypalSubscriptionId String?
+  autoRenew       Boolean         @default(true)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  
+  payments        Payment[]
+  
+  @@index([status])
+  @@index([plan])
+}
+
+enum SubscriptionPlan {
+  BASIC
+  PREMIUM
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  CANCELLED
+  EXPIRED
+  PENDING
+}
+
+// Payment model - Payment records
+model Payment {
+  id              String       @id @default(uuid())
+  subscriptionId  String
+  subscription    Subscription @relation(fields: [subscriptionId], references: [id])
+  amount          Float
+  currency        String       @default("USD")
+  status          PaymentStatus
+  paymentMethod   String
+  paypalOrderId   String?
+  createdAt       DateTime     @default(now())
+  
+  @@index([subscriptionId])
+  @@index([status])
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+// Category model - Product categories
+model Category {
+  id          String    @id @default(uuid())
+  name        String
+  description String?
+  businessId  String
+  business    Business  @relation(fields: [businessId], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  products    Product[]
+  
+  @@unique([businessId, name])
+  @@index([businessId])
+}
+
+// Product model - Inventory management
+model Product {
+  id              String    @id @default(uuid())
+  name            String
+  description     String?
+  barcode         String?   @unique
+  sku             String?
+  price           Float
+  cost            Float
+  stock           Int       @default(0)
+  minStock        Int       @default(5)
+  categoryId      String
+  category        Category  @relation(fields: [categoryId], references: [id])
+  businessId      String
+  business        Business  @relation(fields: [businessId], references: [id])
+  imageUrl        String?
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  saleItems       SaleItem[]
+  inventoryMovements InventoryMovement[]
+  
+  @@index([businessId])
+  @@index([categoryId])
+  @@index([barcode])
+}
+
+// Sale model - Point of sale transactions
+model Sale {
+  id              String    @id @default(uuid())
+  saleNumber      String    @unique
+  businessId      String
+  business        Business  @relation(fields: [businessId], references: [id])
+  userId          String
+  user            User      @relation(fields: [userId], references: [id])
+  subtotal        Float
+  tax             Float     @default(0)
+  discount        Float     @default(0)
+  total           Float
+  paymentMethod   PaymentMethod
+  status          SaleStatus @default(COMPLETED)
+  notes           String?
+  createdAt       DateTime  @default(now())
+  
+  items           SaleItem[]
+  
+  @@index([businessId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  TRANSFER
+  PAYPAL
+}
+
+enum SaleStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+  REFUNDED
+}
+
+// SaleItem model - Items in a sale
+model SaleItem {
+  id          String   @id @default(uuid())
+  saleId      String
+  sale        Sale     @relation(fields: [saleId], references: [id])
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id])
+  quantity    Int
+  price       Float
+  subtotal    Float
+  createdAt   DateTime @default(now())
+  
+  @@index([saleId])
+  @@index([productId])
+}
+
+// InventoryMovement model - Stock tracking
+model InventoryMovement {
+  id          String           @id @default(uuid())
+  productId   String
+  product     Product          @relation(fields: [productId], references: [id])
+  userId      String
+  user        User             @relation(fields: [userId], references: [id])
+  type        MovementType
+  quantity    Int
+  previousStock Int
+  newStock    Int
+  reason      String?
+  createdAt   DateTime         @default(now())
+  
+  @@index([productId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+enum MovementType {
+  PURCHASE
+  SALE
+  ADJUSTMENT
+  RETURN
+  LOSS
+}
